@@ -66,8 +66,7 @@ class Ensemble(object):
     top_formats = ['']
     trj_formats = ['']
 
-    def __init__(self, dirname=None, topology_paths=None, **universe_kwargs):
-        self.top_dict = topology_paths
+    def __init__(self, dirname=None, **universe_kwargs):
         self._num_systems = 0
         self._ensemble = {}
         self._keys = []
@@ -95,7 +94,7 @@ class Ensemble(object):
         return self._ensemble[index]
 
     @staticmethod
-    def _load_universe_from_dir(solv_dir=None, **universe_kwargs) -> Optional[Universe]:
+    def _load_universe_from_dir(**universe_kwargs) -> Optional[Universe]:
         """Loads system simulation files in directory into an
         :class:`MDAnalysis.Universe <MDAnalysis.core.groups.universe.Universe>`
         If multiple topologies are found it will default to using
@@ -128,16 +127,12 @@ class Ensemble(object):
         trj = []
         top = []
 
-        if solv_dir is not None:
-            # if top is specified in kwargs, saved to list
-            top = [solv_dir]
-
         for file in cur_dir:
             if file.endswith('.xtc'):
                 # Saving trajectory directories
                 trj.append(file)
             elif (file.endswith('gro') or file.endswith('.tpr') or file.endswith('gro.bz2')
-                  or file.endswith('gro.gz')) and solv_dir is None:
+                  or file.endswith('gro.gz')):
                 # Saving topology directories
                 top.append(file)
 
@@ -159,10 +154,17 @@ class Ensemble(object):
         """Returns list of system keys"""
         return self._keys
 
-    def _build_ensemble(self, directory):
-        pass
-
-
+    def _build_ensemble(self, directory, dir_list: list = []):
+        for cur_dir, sub_dirs, files in os.walk(directory):
+            dir_list.append(cur_dir)
+            if len(files) > 1:
+                system = self._load_universe_from_dir(**self.unv_kwargs)
+                if system is not None:
+                    sys_key = (n for n in [dir_list])
+                    self.add_system(sys_key, system)
+                if len(sub_dirs) > 0:
+                    for s in sub_dirs:
+                        self._build_ensemble(s, dir_list)
 
     def add_system(self, key, universe: Universe):
         """Adds system from universe object for trajectory and topology files
