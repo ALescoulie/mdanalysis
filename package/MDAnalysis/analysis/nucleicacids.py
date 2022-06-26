@@ -64,6 +64,7 @@ import MDAnalysis as mda
 from .distances import calc_bonds
 from .base import AnalysisBase, Results
 from MDAnalysis.core.groups import Residue
+from .dihedrals import Dihedral
 
 
 class NucPairDist(AnalysisBase):
@@ -369,3 +370,109 @@ class MajorPairDist(NucPairDist):
             sel2.append(s[1].atoms.select_atoms(f'name {a2}'))
 
         super(MajorPairDist, self).__init__(sel1, sel2, **kwargs)
+
+
+class Torsion(Dihedral):
+    r"""
+
+    """
+
+    _a: bool
+    _b: bool
+    _g: bool
+    _d: bool
+    _e: bool
+    _c: bool
+    _n_angles: int = 0
+
+    def __init__(self, strand: mda.AtomGroup, base_pairs: List[int], p_name: str = "P",
+                 o3_name: str = "O3", o4_name: str = "o4", o5_name: str = "O5",
+                 c1_name: str = "C1", c2_name: str = "C2", c3_name: str = "C3",
+                 c4_name: str = "C4", c5_name: str = "C5", n1_name: str = "N1",
+                 n9_name: str = "N9", alpha=True, beta=True, gamma=True, delta=True,
+                 epsilon=True, zeta=True, chi=True, **kwargs) -> None:
+        dihedrals = List[mda.AtomGroup] = []
+
+        for i in base_pairs:
+            if alpha:
+                dihedrals.append(strand.select_atoms(f"resid {i - 1} and name {o3_name} or"
+                                                     f"resid {i} and name {p_name} or"
+                                                     f"resid {i} and name {o5_name} or"
+                                                     f"resid {i} and name {c5_name}"))
+                self._n_angles += 1
+
+            if beta:
+                dihedrals.append(strand.select_atoms(f"resid {i} and name {p_name} or"
+                                                     f"resid {i} and name {o5_name} or"
+                                                     f"resid {i} and name {c5_name} or"
+                                                     f"resid {i} and name {c4_name}"))
+                self._n_angles += 1
+
+            if gamma:
+                dihedrals.append(strand.select_atoms(f"resid {i} and name {o5_name} or"
+                                                     f"resid {i} and name {c5_name} or"
+                                                     f"resid {i} and name {c4_name} or"
+                                                     f"resid {i} and name {c3_name}"))
+                self._n_angles += 1
+
+            if delta:
+                dihedrals.append(strand.select_atoms(f"resid {i} and name {c5_name} or"
+                                                     f"resid {i} and name {c4_name} or"
+                                                     f"resid {i} and name {c3_name} or"
+                                                     f"resid {i} and name {o3_name}"))
+                self._n_angles += 1
+
+            if epsilon:
+                dihedrals.append(strand.select_atoms(f"resid {i} and name {c4_name} or"
+                                                     f"resid {i} and name {c3_name} or"
+                                                     f"resid {i} and name {o3_name} or"
+                                                     f"resid {i + 1} and name {p_name}"))
+                self._n_angles += 1
+
+            if zeta:
+                dihedrals.append(strand.select_atoms(f"resid {i} and name {c3_name} or"
+                                                     f"resid {i} and name {o3_name} or"
+                                                     f"resid {i + 1} and name {p_name} or"
+                                                     f"resid {i + 1} and name {o5_name}"))
+                self._n_angles += 1
+
+            if chi:
+                tmp: mda.AtomGroup = strand.(strand.select_atoms(f"resid {i} and name {o4_name} or"
+                                                                 f"resid {i} and name {c1_name} or"
+                                                                 f"resid {i + 1} and name {n9_name} or"
+                                                                 f"resid {i + 1} and name {c4_name}"))
+
+                if len(tmp > 4):
+                    dihedrals.append(strand.select_atoms(f"resid {i} and name {o4_name} or"
+                                                         f"resid {i} and name {c1_name} or"
+                                                         f"resid {i + 1} and name {n1_name} or"
+                                                         f"resid {i + 1} and name {c2_name}"))
+                else:
+                    dihedrals.append(tmp)
+
+                self._n_angles += 1
+
+        if len(dihedrals) == 0:
+            raise ValueError("No torsion angles selected")
+
+        # setting instance vars for which angles were run
+        self._a = alpha
+        self._b = beta
+        self._g = gamma
+        self._d = delta
+        self._e = epsilon
+        self._z = zeta
+        self._c = chi
+
+        super(Torsion, self).__init__(dihedrals, **kwargs)
+        self.results = Results()
+
+    def _conclude(self) -> None:
+        angles = List[List[float]]
+
+        if self._n_angles == 1:
+            self.results.angles = np.rad2deg(np.array(super(Dihedral).results.angles))
+        else:
+
+
+
