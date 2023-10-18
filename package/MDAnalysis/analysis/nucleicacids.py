@@ -68,6 +68,8 @@ import warnings
 
 import numpy as np
 
+from math import pi
+
 import MDAnalysis as mda
 from .distances import calc_bonds
 from .base import AnalysisBase, Results
@@ -616,3 +618,102 @@ class MajorPairDist(NucPairDist):
         super(MajorPairDist, self).__init__(
             selections[0], selections[1], **kwargs
         )
+
+
+class PhaseCP(AnalysisBase):
+    r"""
+    """
+
+    def __init__(self, strand: ResidueGroup, verbose=False, **kwargs):
+        self._strand: ResidueGroup = strand
+
+        super().__init__(strand.universe.trajectory, verbose, **kwargs)
+
+    def _prepare(self):
+        self._o4: mda.AtomGroup = self._strand.select_atoms("name O4")
+        self._c1p: mda.AtomGroup = self._strand.select_atoms("name C1\'")
+        self._c2p: mda.AtomGroup = self._strand.select_atoms("name C2\'")
+        self._c3p: mda.AtomGroup = self._strand.select_atoms("name C3\'")
+        self._c4p: mda.AtomGroup = self._strand.select_atoms("name C4\'")
+        self._results_dict: Dict[int, List[float]] = {
+            i: [] for i in range(len(self._strand))
+        }
+
+    def _single_frame(self) -> None:
+        # Ribose ring center
+        center: np.ndarray = 0.2 * (
+            self._o4.positions +
+            self._c1p.positions +
+            self._c2p.positions +
+            self._c3p.positions +
+            self._c4p.positions
+        )
+
+        # Relative positions about the center point
+        o4_rel_pos: np.ndarray = self._o4.positions - center
+        c1_rel_pos: np.ndarray = self._c1p.positions - center
+        c2_rel_pos: np.ndarray = self._c2p.positions - center
+        c3_rel_pos: np.ndarray = self._c3p.positions - center
+        c4_rel_pos: np.ndarray = self._c4p.positions - center
+
+        # Sum of the vertical distance from the O4 x-axis of each atom
+        # from the center.
+        # Ribose ring atoms circle the center at interval of 2pi/5
+        # Placed sin((2pi * n)/5) values to reduce math calls.
+        vert_sum: np.ndarray = np.array([
+            c1_rel_pos * 0.951057 +
+            c2_rel_pos * 0.587785 +
+            c3_rel_pos * -0.587785 +
+            c4_rel_pos * -9.51057
+        ])
+
+        # Sum of horizontal distances from the axis perpendicular
+        # to O4 of each atom.
+        # Ribose ring atoms circle the center at interval of 2pi/5
+        # Placed cos((2pi * n)/5) values to reduce math calls.
+        # Result is a 3 x n array
+        horz_sum: np.ndarray = np.array([
+            o4_rel_pos +
+            c1_rel_pos * 0.309017 +
+            c2_rel_pos * -0.809017 +
+            c3_rel_pos *  -0.809017 +
+            c4_rel_pos * 0.309017
+        ])
+
+        # A 3 x n array of the cross product of each horz and vert sum
+        cross_vecs: np.ndarray = np.array([
+            np.cross(vert_sum[:,n], horz_sum[:,n]) for n in horz_sum.shape[1]
+        ])
+
+        norm_vecs: np.ndarray = np.linalg.norm(cross_vecs, axis=1)
+
+        o4_dots: np.ndarray = np.dot(o4_rel_pos, norm_vecs)
+        c1_dots: np.ndarray = np.dot(c1_rel_pos, norm_vecs)
+        c2_dots: np.ndarray = np.dot(c2_rel_pos, norm_vecs)
+        c3_dots: np.ndarray = np.dot(c3_rel_pos, norm_vecs)
+        c4_dots: np.ndarray = np.dot(c3_rel_pos, norm_vecs)
+
+        sin_offsets: np.ndarray = np.array([ 
+            c1_dots * 0.951057 +
+            c2_dots * 0.587785 +
+            c3_dots * -0.587785 +
+            c4_dots * -9.51057
+        ])
+
+        cos_offsets: np.ndarray = np.array([
+            o4_dots +
+            c1_dots * 0.309017 +
+            c2_dots * -0.809017 +
+            c3_dots *  -0.809017 +
+            c4_dots * 0.309017
+        ])
+
+        phase_angle: np.ndarray = (np.arctan2(sin_offsets, cos_offsets) +
+                                   (pi / 2)) * 180 / pi
+        
+        phase_angle = phase_angle % 360
+
+        for i in self._c1p.n_residues:
+            self._results_dict[i] = phase_angle[i]
+        
+    
